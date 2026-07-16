@@ -1,0 +1,29 @@
+{% extends "base_user.html" %}
+{% block title %}Вход{% endblock %}
+{% block content %}
+<h2>Вход</h2>
+<form action="{{ url_for('login') }}" method="post" onsubmit="return validateForm(this)">
+    <label for="username">Имя пользователя:</label>
+    <input type="text" id="username" name="username" required><br>
+
+    <label for="password">Пароль:</label>
+    <input type="password" id="password" name="password" required><br>
+
+    <button type="button"
+      onclick="location.href='{{ url_for('google_auth') }}'"
+      style="
+        background-color:#fff;
+        color:#757575;
+        border-radius:4px;
+        padding:10px 16px;
+        font-size:1rem;
+        cursor:pointer;
+      "
+    >
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Google_%22G%22_Logo.svg/1920px-Google_%22G%22_Logo.svg.png" width="20"/>
+      Продолжить с Google
+    </button>
+
+    <button type="submit">Войти</button>
+</form>
+{% endblock %}
