@@ -4,3 +4,6 @@ Flask-SQLAlchemy>=2.0.23
 Werkzeug>=2.3.0
 email_validator>=2.0.0
 Authlib>=1.0.0
+Flask-Migrate
+Flask-Login
+Flask-WTF
