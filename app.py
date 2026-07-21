@@ -11,7 +11,7 @@ from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from datetime import datetime
-# Импорты для авторизации через Google
+# Импорты для авторизации через Яндекс
 from authlib.integrations.flask_client import OAuth
 from flask_login import LoginManager, UserMixin, login_user, logout_user, current_user
 
@@ -39,17 +39,33 @@ app.config['SQLALCHEMY_BINDS'] = {
 # Инициируем базу данных
 db = SQLAlchemy(app)
 
-# === НАЧАЛО: Авторизация через Google === #
+# === НАЧАЛО: Авторизация через Яндекс === #
 
 # Подключение Authlib
 oauth = OAuth(app)
-google = oauth.register(
-    name='google',
-    # Эти данные берутся из config.py или .env
-    client_id=app.config.get("GOOGLE_CLIENT_ID"),
-    client_secret=app.config.get("GOOGLE_CLIENT_SECRET"),
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
+
+# Настройка OAuth для Яндекса
+# Документация: https://yandex.ru/dev/oauth/doc/dg/reference/web-client-docpage/
+yandex = oauth.register(
+    name='yandex',
+    client_id=app.config.get("240a042f32524aeca4f5c1ee7ef0d313"),  # Получить в Яндекс.OAuth
+    client_secret=app.config.get("7f343bd7a91d430cbd28bbe7955fbcc9"),  # Получить в Яндекс.OAuth
+    access_token_url='https://oauth.yandex.ru/token',
+    authorize_url='https://oauth.yandex.ru/authorize',
+    api_base_url='https://login.yandex.ru/',
+    client_kwargs={
+        'scope': 'login:email login:info',  # Запрашиваем email и информацию о пользователе
+        'token_endpoint_auth_method': 'client_secret_post'
+    },
+    # Яндекс использует другой формат ответа
+    userinfo_endpoint='info',
+    userinfo_compliance_fix=lambda resp: {
+        'id': resp.get('id'),
+        'name': resp.get('display_name') or resp.get('first_name', ''),
+        'email': resp.get('default_email', ''),
+        'first_name': resp.get('first_name', ''),
+        'last_name': resp.get('last_name', '')
+    }
 )
 
 
@@ -57,7 +73,7 @@ google = oauth.register(
 class CustomUser(UserMixin):
     def __init__(self, user_id, username=None):
         self.id = user_id
-        self.username = username or f"Google_{user_id}"
+        self.username = username or f"Yandex_{user_id}"
 
 
 # Менеджер логинов
@@ -67,54 +83,71 @@ login_manager.init_app(app)
 
 @login_manager.user_loader
 def load_user(user_id):
-    return CustomUser(user_id)  # Мы просто возвращаем объект по ID, без БД
+    return CustomUser(user_id)
 
 
-@app.route("/auth/google")
-def google_auth():
-    """Перенаправляет на страницу входа Google."""
-    redirect_uri = url_for("google_callback", _external=True)
-    return google.authorize_redirect(redirect_uri)
+@app.route("/auth/yandex")
+def yandex_auth():
+    """Перенаправляет на страницу входа Яндекс."""
+    redirect_uri = url_for("yandex_callback", _external=True)
+    return yandex.authorize_redirect(redirect_uri)
 
 
-@app.route("/auth/callback")
-def google_callback():
-    token = oauth.google.authorize_access_token()  # Получает токен доступа
-    if not token:
-        flash("Ошибка аутентификации.")
-        return redirect(url_for("login"))
+@app.route("/auth/yandex/callback")
+def yandex_callback():
+    """Обработка callback от Яндекса после авторизации."""
+    try:
+        # Получаем токен доступа
+        token = yandex.authorize_access_token()
+        if not token:
+            flash("Ошибка аутентификации.", category="danger")
+            return redirect(url_for("login"))
 
-    resp = oauth.google.get('https://openidconnect.googleapis.com/v1/userinfo', token=token)
-    user_info = resp.json()
+        # Получаем информацию о пользователе
+        resp = yandex.get('info')
+        user_info = resp.json()
 
-    sub = user_info["sub"]  # Уникальный ID в системе Google
-    username = user_info.get("name", f"google_{sub}")
-    email = user_info.get("email") or f"user_{sub}@gmail.com"  # Защита от None
+        # Извлекаем данные пользователя
+        user_id = str(user_info.get('id'))  # Уникальный ID в системе Яндекса
+        email = user_info.get('default_email')
+        display_name = user_info.get('display_name') or user_info.get('real_name') or f"yandex_{user_id}"
 
-    existing_user = User.query.filter_by(email=email).first()
+        # Проверяем наличие email - для Яндекса он обязателен
+        if not email:
+            flash("Не удалось получить email от Яндекса.", category="danger")
+            return redirect(url_for("login"))
 
-    # Вариант А: Пользователь уже существует
-    if existing_user is not None:
-        login_user(CustomUser(existing_user.id, existing_user.username))
-        return redirect(url_for("index"))  # Логиним существующего
+        # Ищем пользователя в БД
+        existing_user = User.query.filter_by(email=email).first()
 
-    # Вариант B: Новый пользователь
-    else:
-        new_user = User(username=f"google_{sub}", email=email)
-        new_user.set_password(sub[:8])  # Хэшируем часть суба как пароль
+        # Вариант А: Пользователь уже существует
+        if existing_user:
+            login_user(CustomUser(existing_user.id, existing_user.username))
+            flash(f"Добро пожаловать, {existing_user.username}!", category="success")
+            return redirect(url_for("index"))
+
+        # Вариант B: Новый пользователь
+        new_user = User(
+            username=f"yandex_{user_id}",
+            email=email
+        )
+        # Генерируем пароль из части ID пользователя
+        new_user.set_password(user_id[:8])
 
         try:
             db.session.add(new_user)
             db.session.commit()
-
-            # Сразу логиним созданного пользователя
             login_user(CustomUser(new_user.id, new_user.username))
             flash(f"Пользователь {new_user.username} создан.", category="success")
             return redirect(url_for("index"))
-
         except Exception as e:
-            flash(f"Ошибка при создании аккаунта: {e}")
+            db.session.rollback()
+            flash(f"Ошибка при создании аккаунта: {str(e)}", category="danger")
             return redirect(url_for("login"))
+
+    except Exception as e:
+        flash(f"Ошибка при авторизации через Яндекс: {str(e)}", category="danger")
+        return redirect(url_for("login"))
 
 
 @app.route('/logout')
@@ -125,9 +158,9 @@ def logout():
     return redirect(url_for('posts'))
 
 
-# === КОНЕЦ: Авторизация через Google === #
+# === КОНЕЦ: Авторизация через Яндекс === #
 
-# --- Модели ---
+# --- Модели (без изменений) ---
 
 class Article(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -141,7 +174,7 @@ class Article(db.Model):
 
 
 class User(db.Model):
-    __bind_key__ = 'users'  # Указываем, что эта модель использует базу 'users'
+    __bind_key__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
@@ -159,7 +192,7 @@ with app.app_context():
     db.create_all()
 
 
-# --- Маршруты для блога (Articles) ---
+# --- Маршруты для блога (без изменений) ---
 
 @app.route('/')
 @app.route('/home')
@@ -232,7 +265,7 @@ def create_article():
         return render_template("create_article.html")
 
 
-# --- Маршруты для авторизации (Users) ---
+# --- Маршруты для авторизации (без изменений) ---
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -241,7 +274,6 @@ def register():
         email = request.form['email']
         password = request.form['password']
 
-        # Проверяем на уникальность
         if User.query.filter_by(username=username).first() or User.query.filter_by(email=email).first():
             flash('Пользователь с таким именем или почтой уже существует.')
             return redirect(url_for('register'))
@@ -262,18 +294,15 @@ def login():
         username = request.form['username']
         password = request.form['password']
 
-        # Сначала пробуем найти по имени пользователя
         user = User.query.filter_by(username=username).first()
 
-        # Если не нашли, пытаемся найти по почте (для тех, кто зашёл через Google)
         if not user:
             user = User.query.filter_by(email=username).first()
 
         if user and user.check_password(password):
-            # Используем либо старый способ сессии, либо новый через Flask-Login
             session['username'] = user.username
             login_user(CustomUser(user.id, user.username))
-            return redirect(url_for('posts'))  # Перенаправляем на главную после входа
+            return redirect(url_for('posts'))
         else:
             flash('Неверное имя пользователя или пароль.', category="danger")
             return redirect(url_for('login'))
