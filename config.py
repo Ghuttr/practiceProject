@@ -1,3 +1,7 @@
 GOOGLE_CLIENT_ID = '868845313562-7nb6cqidtiticpqpafjrjmh3p5j7qps7.apps.googleusercontent.com'
 GOOGLE_CLIENT_SECRET = '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'
-SERVER_NAME = 'mywerse.ru'
+
+YANDEX_CLIENT_ID = '240a042f32524aeca4f5c1ee7ef0d313'
+YANDEX_CLIENT_SECRET = '7f343bd7a91d430cbd28bbe7955fbcc9'
+
+SERVER_NAME = '147.45.141.180'
