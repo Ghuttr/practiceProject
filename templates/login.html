@@ -10,18 +10,23 @@
     <input type="password" id="password" name="password" required><br>
 
     <button type="button"
-      onclick="location.href='{{ url_for('google_auth') }}'"
+      onclick="location.href='{{ url_for('yandex_auth') }}'"
       style="
-        background-color:#fff;
-        color:#757575;
+        background-color:#fc3f1d;
+        color:#fff;
         border-radius:4px;
         padding:10px 16px;
         font-size:1rem;
         cursor:pointer;
+        border:none;
+        margin:10px 0;
       "
     >
-      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/53/Google_%22G%22_Logo.svg/1920px-Google_%22G%22_Logo.svg.png" width="20"/>
-      Продолжить с Google
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle; margin-right:8px;">
+        <path d="M2.5 18L7.5 10L2.5 2H6L11 10L6 18H2.5Z" fill="white"/>
+        <path d="M10 18L15 10L10 2H13.5L18.5 10L13.5 18H10Z" fill="white"/>
+      </svg>
+      Войти через Яндекс
     </button>
 
     <button type="submit">Войти</button>
